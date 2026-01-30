@@ -15,3 +15,7 @@ env/
 # Fichiers système
 .DS_Store
 Thumbs.db
+
+#backend resources
+Backend_API/node_modules
+Backend_API/parking.db
