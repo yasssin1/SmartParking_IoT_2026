@@ -3,21 +3,29 @@ import json
 import paho.mqtt.client as mqtt
 
 app = Flask(__name__)
-
-SPOTS = [f"A{i:02d}" for i in range(1, 21)]  # A01 .. A20
+# Spots normalized to A01..A20
+SPOTS = [f"A{i:02d}" for i in range(1, 21)]  
 places = {sid: "FREE" for sid in SPOTS}
-
+# ----------------------------
+# CONFIG
+# ----------------------------
 MQTT_BROKER = "broker.emqx.io"
 MQTT_PORT = 1883
+
 PREFIX = "smart_parking_2026"
+
 MQTT_TOPIC = f"{PREFIX}/parking/spots/+/status"
 MQTT_LED_TOPIC = f"{PREFIX}/parking/display/available"
 
 mqtt_client = None
 
-
-def on_connect(client, userdata, flags, rc):
+# ----------------------------
+# MQTT CALLBACKS (API v2)
+# ----------------------------
+def on_connect(client, userdata, flags, reason_code, properties=None):
+    # Subscribe to all spot status updates
     client.subscribe(MQTT_TOPIC, qos=1)
+    
 
 def on_message(client, userdata, msg):
     
@@ -26,20 +34,35 @@ def on_message(client, userdata, msg):
     parts = msg.topic.split("/")
     if len(parts) < 5:
         return
-    place_id = parts[3].upper()
+
+    raw_id = parts[3].upper()
+    if not (raw_id.startswith("A") and raw_id[1:].isdigit()):
+        return
+    place_id = f"A{int(raw_id[1:]):02d}"
 
 
     payload = msg.payload.decode("utf-8").strip()
 
     # Accept JSON payload or plain text (FREE/OCCUPIED)
     status = None
+
     try:
         data = json.loads(payload)
         status = str(data.get("status", "")).upper()
+
+        # Informations supplémentaires envoyées par P1 (acceptées uniquement pour compatibilité)
+
+        distance_cm = data.get("distance_cm", None)
+        ts = data.get("ts", None)
+        
         if "id" in data:
-            place_id = str(data["id"]).upper()
+            incoming = str(data["id"]).upper()
+            if incoming.startswith("A") and incoming[1:].isdigit():
+                place_id = f"A{int(incoming[1:]):02d}"
+
     except Exception:
         status = payload.upper()
+
 
     if status not in ("FREE", "OCCUPIED"):
         return
@@ -51,15 +74,20 @@ def on_message(client, userdata, msg):
 
 def start_mqtt():
     global mqtt_client
-    client = mqtt.Client(client_id="SmartPark2026_P4")
+    client = mqtt.Client(
+       mqtt.CallbackAPIVersion.VERSION2,
+       client_id="SmartPark2026_P4"
+    )
     client.on_connect = on_connect
     client.on_message = on_message
+
     client.connect(MQTT_BROKER, MQTT_PORT, 60)
     client.loop_start()
     mqtt_client = client
 
-
-
+# ----------------------------
+# WEB UI (Read-only)
+# ----------------------------
 @app.get("/")
 def led_display():
     return """
