@@ -113,7 +113,7 @@ def on_message(client, userdata, msg):
     except Exception as e:
         print(f"⚠️ Error: {e}")
 
-client = mqtt.Client(client_id=CLIENT_ID)
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=CLIENT_ID)
 client.on_connect = on_connect
 client.on_message = on_message
 
